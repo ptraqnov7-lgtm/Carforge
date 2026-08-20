@@ -61,7 +61,7 @@ function normalizePhoto(file){
      const img=new Image();
      img.onerror=()=>reject(new Error("Could not read that photo. Please choose a JPG, PNG, or WebP image."));
      img.onload=function(){
-       const maxDim=1600;
+       const maxDim=1024;
        let w=img.naturalWidth, h=img.naturalHeight;
        if(w>maxDim || h>maxDim){
          const scale=maxDim/Math.max(w,h);
@@ -70,7 +70,7 @@ function normalizePhoto(file){
        const canvas=document.createElement("canvas");
        canvas.width=w; canvas.height=h;
        canvas.getContext("2d").drawImage(img,0,0,w,h);
-       resolve(canvas.toDataURL("image/jpeg",0.85));
+       resolve(canvas.toDataURL("image/jpeg",0.60));
      };
      img.src=e.target.result;
    };
