@@ -25,9 +25,9 @@ export default {
       }
 
       try {
-        if (!env.OPENAI_API_KEY) {
+        if (!env.OPE) {
           return json(
-            { error: "OPENAI_API_KEY is not configured." },
+            { error: "OPE is not configured." },
             500
           );
         }
@@ -122,7 +122,7 @@ Photorealistic automotive photography.`
           {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${env.OPENAI_API_KEY}`,
+              Authorization: `Bearer ${env.OPE}`,
             },
             body: form,
           }
