@@ -22,7 +22,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
       throw new Error("OPENAI_API_KEY is not configured in Netlify.");
     }
 
@@ -34,11 +36,15 @@ exports.handler = async (event) => {
       return {
         statusCode: 400,
         headers: corsHeaders,
-        body: JSON.stringify({ error: "No image provided." }),
+        body: JSON.stringify({
+          error: "No image provided.",
+        }),
       };
     }
 
-    const match = image.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/);
+    const match = image.match(
+      /^data:(image\/(?:png|jpeg|jpg|webp));base64,(.+)$/
+    );
 
     if (!match) {
       return {
@@ -50,28 +56,64 @@ exports.handler = async (event) => {
       };
     }
 
-    const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+    const mimeType =
+      match[1] === "image/jpg" ? "image/jpeg" : match[1];
+
     const base64Data = match[2];
+
+    // Protect the OpenAI request from oversized images.
+    // The frontend already compresses the photo, but this is
+    // an additional server-side safety check.
+    if (base64Data.length > 1800000) {
+      return {
+        statusCode: 413,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          error:
+            "The uploaded photo is still too large. Please choose another photo.",
+        }),
+      };
+    }
 
     const binary = Buffer.from(base64Data, "base64");
 
     const form = new FormData();
 
-    form.append(
-      "model",
-      "gpt-image-2"
-    );
+    form.append("model", "gpt-image-2");
 
     form.append(
       "prompt",
-      `Edit the uploaded car photo realistically.
+      `Edit this exact uploaded car photo.
 
-Keep the exact same Audi A3 8P Sportback, body proportions, paint color, wheels, headlights, background, camera angle and lighting.
+Keep the exact same Audi A3 8P Sportback.
+
+Keep:
+- the same car
+- the same body proportions
+- the same paint color
+- the same wheels
+- the same headlights
+- the same background
+- the same camera angle
+- the same lighting
+- the same perspective
 
 ONLY apply this modification:
+
 ${modification}
 
-Make the modification look like a real OEM-quality installation on the original car. Do not redesign the car and do not change anything else. Photorealistic result.`
+Install the S3 Front Bumper realistically on the original car.
+
+The bumper must look like a real OEM-quality Audi S3 8P bumper physically installed on the car.
+
+Do not redesign the vehicle.
+Do not change the wheels.
+Do not change the color.
+Do not change the background.
+Do not change the camera angle.
+Do not add other modifications.
+
+Photorealistic automotive photography.`
     );
 
     form.append(
@@ -85,13 +127,16 @@ Make the modification look like a real OEM-quality installation on the original 
     form.append("quality", "auto");
     form.append("output_format", "jpeg");
 
-    const response = await fetch("https://api.openai.com/v1/images/edits", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: form,
-    });
+    const response = await fetch(
+      "https://api.openai.com/v1/images/edits",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: form,
+      }
+    );
 
     const result = await response.json();
 
