@@ -120,56 +120,50 @@ function restore(){
    document.getElementById("studioImg").src=data;
  }
 }
-
 async function generateBuild(){
-  const photo=window.carforgePhoto;
-  if(!photo){alert("Please upload a car photo first.");return;}
-  const btn=document.getElementById("generate");
-  const status=document.getElementById("aiStatus");
-  btn.disabled=true; btn.style.opacity=".55"; status.style.display="block";
-  try{
-    const jobId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
-    const up=await fetchRetry("/.netlify/functions/upload-image",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({jobId,image:photo})
-    });
-    const ud=await up.json().catch(()=>({}));
-    if(!up.ok) throw new Error(ud.error||"Could not upload image");
-    const start=await fetchRetry("/.netlify/functions/generate-background",{
-      method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({jobId,part:"S3 Front Bumper"})
-    });
-    if(start.status!==202) {
-      const sd=await start.json().catch(()=>({}));
-      throw new Error(sd.error||"Could not start AI generation");
-    }
-    let misses=0;
-    for(let i=0;i<150;i++){
-      await new Promise(r=>setTimeout(r,2000));
-      let s;
-      try{
-        const sr=await fetchRetry("/.netlify/functions/generate-status?jobId="+encodeURIComponent(jobId),{cache:"no-store"});
-        s=await sr.json();
-        misses=0;
-      }catch(pollErr){
-        // Tolerate a few transient network blips while polling rather than failing the whole flow.
-        misses++;
-        if(misses>5) throw new Error("Lost connection while checking generation status. Please try again.");
-        continue;
-      }
-      if(s.status==="completed"){
-        document.getElementById("resultImg").src="/.netlify/functions/result-image?jobId="+encodeURIComponent(jobId);
-        go("result"); return;
-      }
-      if(s.status==="error") throw new Error(s.error||"AI generation failed");
-    }
-    throw new Error("AI generation is taking too long. Please try again.");
-  }catch(err){
-    alert("AI generation failed: "+err.message);
-  }finally{
-    btn.disabled=false; btn.style.opacity="1"; status.style.display="none";
+ const photo=window.carforgePhoto;
+ if(!photo){alert("Please upload a car photo first.");return}
+
+ const btn=document.getElementById("generate");
+ const status=document.getElementById("aiStatus");
+
+ btn.disabled=true;
+ btn.style.opacity=".55";
+ status.style.display="block";
+
+ try{
+  const response=await fetchRetry("/.netlify/functions/generate",{
+   method:"POST",
+   headers:{"Content-Type":"application/json"},
+   body:JSON.stringify({
+    image:photo,
+    modification:"S3 Front Bumper"
+   })
+  });
+
+  const data=await response.json().catch(()=>({}));
+
+  if(!response.ok){
+   throw new Error(data.error||("AI generation failed: "+response.status));
   }
+
+  if(!data.image){
+   throw new Error("OpenAI returned no generated image.");
+  }
+
+  document.getElementById("resultImg").src=data.image;
+  go("result");
+
+ }catch(err){
+  alert("AI generation failed: "+err.message);
+ }finally{
+  btn.disabled=false;
+  btn.style.opacity="1";
+  status.style.display="none";
+ }
 }
+
+  
 restore();
 </script>
 </body></html>
