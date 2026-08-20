@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CarForge</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#080808;color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.app{max-width:430px;margin:auto;min-height:100vh;background:#0b0b0b}.hdr{height:70px;padding:0 20px;display:flex;align-items:center;border-bottom:1px solid #222;font-size:24px;font-weight:900}.hdr span{color:#ef233c}
+.s{display:none;padding:22px;min-height:calc(100vh - 70px)}.s.on{display:block}.hero{padding-top:60px}h1{font-size:52px;line-height:.95}.red{color:#ef233c}p{color:#aaa;line-height:1.5}
+.btn{width:100%;padding:18px;margin-top:14px;border:0;border-radius:17px;background:#ef233c;color:#fff;font-size:17px;font-weight:900}.dark{background:#191919;border:1px solid #333}
+.upload{display:block;text-align:center;border:1px dashed #666;border-radius:18px;background:#111;padding:45px 20px;margin-top:20px}.car{height:270px;border-radius:18px;background:#1a1a1a;overflow:hidden;margin:16px 0;display:flex;align-items:center;justify-content:center}.car img{width:100%;height:100%;object-fit:cover}.card{background:#151515;border:1px solid #292929;border-radius:17px;padding:18px;margin:12px 0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.part{background:#151515;border:1px solid #292929;border-radius:15px;padding:15px}.part.sel{border-color:#ef233c}.muted{color:#888;font-size:13px}
+</style></head>
+<body><div class="app">
+<div class="hdr">CAR<span>FORGE</span></div>
+
+<section id="home" class="s on"><div class="hero"><h1>Build Your<br><span class="red">Dream Car</span></h1><p>Upload your car and customize it.</p><button class="btn" onclick="go('upload')">UPLOAD YOUR CAR</button></div></section>
+
+<section id="upload" class="s"><h2>Upload Your Car</h2>
+<label class="upload" for="file">
+<div style="font-size:48px">📸</div><h3>Choose a photo</h3><p>Tap here to open your iPhone Photos.</p>
+<input id="file" type="file" accept="image/*" style="display:none">
+</label>
+<div id="preview" class="car" style="display:none"><img id="previewImg"></div>
+<div id="status" class="card" style="display:none">✓ Photo saved</div>
+<button id="continue" class="btn" style="display:none" onclick="go('studio')">CONTINUE</button>
+</section>
+
+<section id="studio" class="s"><h2>Tuning Studio</h2>
+<div class="car"><img id="studioImg"></div>
+<div class="card"><b>Audi A3 8P Sportback — 2009</b><p>Select a modification, then generate an AI-edited version of your photo.</p></div>
+<div class="card" style="border-color:#ef233c"><b>S3 Front Bumper</b><p>Realistic OEM-style Audi S3 8P front bumper.</p></div>
+<div id="aiStatus" class="card" style="display:none;text-align:center">🤖 Generating your build…<br><small>This may take up to a couple of minutes.</small></div>
+<button id="generate" class="btn" onclick="generateBuild()">GENERATE BUILD ✨</button>
+<button class="btn dark" onclick="go('upload')">CHANGE PHOTO</button>
+</section>
+
+<section id="result" class="s"><h2>Your Build</h2>
+<div class="car"><img id="resultImg"></div>
+<div class="card"><b>AI result</b><p>S3 Front Bumper applied.</p></div>
+<button class="btn dark" onclick="go('studio')">BACK TO TUNING</button>
+</section>
+</div>
+
+<script>
+let photoKey="carforge_photo_v6";
+
+function go(id){
+ document.querySelectorAll(".s").forEach(x=>x.classList.remove("on"));
+ document.getElementById(id).classList.add("on");
+ window.scrollTo(0,0);
+}
+
+// Normalizes any input photo (HEIC/HEIF from iPhone, huge originals, etc.) into a
+// modest-sized JPEG the backend can always accept, well under function payload limits.
+function normalizePhoto(file){
+ return new Promise((resolve,reject)=>{
+   const reader=new FileReader();
+   reader.onerror=()=>reject(new Error("Could not read that photo. Please try again."));
+   reader.onload=function(e){
+     const img=new Image();
+     img.onerror=()=>reject(new Error("Could not read that photo. Please choose a JPG, PNG, or WebP image."));
+     img.onload=function(){
+       const maxDim=1600;
+       let w=img.naturalWidth, h=img.naturalHeight;
+       if(w>maxDim || h>maxDim){
+         const scale=maxDim/Math.max(w,h);
+         w=Math.round(w*scale); h=Math.round(h*scale);
+       }
+       const canvas=document.createElement("canvas");
+       canvas.width=w; canvas.height=h;
+       canvas.getContext("2d").drawImage(img,0,0,w,h);
+       resolve(canvas.toDataURL("image/jpeg",0.85));
+     };
+     img.src=e.target.result;
+   };
+   reader.readAsDataURL(file);
+ });
+}
+
+// iOS Safari can throw a transient "Load failed" network error on the first fetch
+// right after returning from the native photo picker. Retry once before giving up.
+async function fetchRetry(url,opts,retries=1){
+ try{ return await fetch(url,opts); }
+ catch(err){
+   if(retries>0){ await new Promise(r=>setTimeout(r,600)); return fetchRetry(url,opts,retries-1); }
+   throw new Error("Load failed. Please check your connection and try again.");
+ }
+}
+
+const file=document.getElementById("file");
+file.addEventListener("change", async function(){
+ const f=this.files && this.files[0];
+ if(!f) return;
+ if(f.type && !f.type.startsWith("image/")) { alert("Please choose an image."); return; }
+
+ try{
+   const data=await normalizePhoto(f);
+   window.carforgePhoto=data;
+   try { localStorage.setItem(photoKey,data); } catch(e) {}
+   document.getElementById("previewImg").src=data;
+   document.getElementById("preview").style.display="flex";
+   document.getElementById("status").style.display="block";
+   document.getElementById("continue").style.display="block";
+   document.getElementById("studioImg").src=data;
+ }catch(err){
+   alert(err.message||"Could not process that photo. Please try another.");
+ }
+});
+
+function restore(){
+ let data=window.carforgePhoto;
+ try { data=data||localStorage.getItem(photoKey); } catch(e) {}
+ if(data){
+   window.carforgePhoto=data;
+   document.getElementById("previewImg").src=data;
+   document.getElementById("preview").style.display="flex";
+   document.getElementById("status").style.display="block";
+   document.getElementById("continue").style.display="block";
+   document.getElementById("studioImg").src=data;
+ }
+}
+
+async function generateBuild(){
+  const photo=window.carforgePhoto;
+  if(!photo){alert("Please upload a car photo first.");return;}
+  const btn=document.getElementById("generate");
+  const status=document.getElementById("aiStatus");
+  btn.disabled=true; btn.style.opacity=".55"; status.style.display="block";
+  try{
+    const jobId=(crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random());
+    const up=await fetchRetry("/.netlify/functions/upload-image",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({jobId,image:photo})
+    });
+    const ud=await up.json().catch(()=>({}));
+    if(!up.ok) throw new Error(ud.error||"Could not upload image");
+    const start=await fetchRetry("/.netlify/functions/generate-background",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({jobId,part:"S3 Front Bumper"})
+    });
+    if(start.status!==202) {
+      const sd=await start.json().catch(()=>({}));
+      throw new Error(sd.error||"Could not start AI generation");
+    }
+    let misses=0;
+    for(let i=0;i<150;i++){
+      await new Promise(r=>setTimeout(r,2000));
+      let s;
+      try{
+        const sr=await fetchRetry("/.netlify/functions/generate-status?jobId="+encodeURIComponent(jobId),{cache:"no-store"});
+        s=await sr.json();
+        misses=0;
+      }catch(pollErr){
+        // Tolerate a few transient network blips while polling rather than failing the whole flow.
+        misses++;
+        if(misses>5) throw new Error("Lost connection while checking generation status. Please try again.");
+        continue;
+      }
+      if(s.status==="completed"){
+        document.getElementById("resultImg").src="/.netlify/functions/result-image?jobId="+encodeURIComponent(jobId);
+        go("result"); return;
+      }
+      if(s.status==="error") throw new Error(s.error||"AI generation failed");
+    }
+    throw new Error("AI generation is taking too long. Please try again.");
+  }catch(err){
+    alert("AI generation failed: "+err.message);
+  }finally{
+    btn.disabled=false; btn.style.opacity="1"; status.style.display="none";
+  }
+}
+restore();
+</script>
+</body></html>
